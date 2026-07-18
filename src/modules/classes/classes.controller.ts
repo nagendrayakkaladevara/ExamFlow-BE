@@ -11,6 +11,10 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
   ok(res, req, result.items, 200, result.meta);
 });
 
+export const listAssigned = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, req, await classesService.listLecturerClasses(req.user!.id));
+});
+
 export const get = asyncHandler(async (req: Request, res: Response) => {
   ok(res, req, await classesService.getClass(req.params.id));
 });

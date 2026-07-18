@@ -53,6 +53,15 @@ export async function listClasses(query: z.infer<typeof listClassesQuerySchema>)
   };
 }
 
+export async function listLecturerClasses(lecturerId: string) {
+  const rows = await prisma.classLecturer.findMany({
+    where: { lecturerId, class: { deletedAt: null, isActive: true } },
+    include: { class: true },
+    orderBy: { class: { name: 'asc' } },
+  });
+  return rows.map((row) => toClassDto(row.class));
+}
+
 export async function getClass(id: string) {
   const row = await prisma.class.findFirst({ where: { id, deletedAt: null } });
   if (!row) throw ApiError.notFound('Class not found');

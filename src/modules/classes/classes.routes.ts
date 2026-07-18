@@ -13,7 +13,15 @@ import {
 
 export const classesRouter = Router();
 
-classesRouter.use(authenticate, authorize('ADMIN'));
+classesRouter.use(authenticate);
+
+classesRouter.get(
+  '/assigned',
+  authorize('LECTURER'),
+  classesController.listAssigned,
+);
+
+classesRouter.use(authorize('ADMIN'));
 
 classesRouter.get('/', validate(listClassesQuerySchema, 'query'), classesController.list);
 classesRouter.post('/', validate(createClassSchema), classesController.create);
