@@ -1,3 +1,518 @@
-// Prisma schema — not configured yet.
-// Models, Neon datasource, and generator will be added in a later phase.
-// See ARCHITECTURE.md §4.6 and §5
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  LECTURER
+  STUDENT
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  FILL_BLANK
+  DESCRIPTIVE
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum ResultPolicy {
+  IMMEDIATE
+  AFTER_COMPLETION
+  SCHEDULED
+}
+
+enum SubmissionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  AUTO_SUBMITTED
+}
+
+enum AudienceTargetType {
+  ALL_LECTURERS
+  ALL_STUDENTS
+  USER
+  CLASS
+}
+
+enum PollResultVisibility {
+  AFTER_VOTE
+  AFTER_EXPIRY
+  NEVER
+}
+
+enum AiEvaluationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  role         UserRole
+  firstName    String    @map("first_name") @db.VarChar(100)
+  lastName     String    @map("last_name") @db.VarChar(100)
+  isActive     Boolean   @default(true) @map("is_active")
+  tokenVersion Int       @default(0) @map("token_version")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+  createdById  String?   @map("created_by") @db.Uuid
+  updatedById  String?   @map("updated_by") @db.Uuid
+
+  createdBy User?  @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?  @relation("UserUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  usersCreated User[] @relation("UserCreatedBy")
+  usersUpdated User[] @relation("UserUpdatedBy")
+
+  refreshTokens       RefreshToken[]
+  classLecturerRows   ClassLecturer[]  @relation("ClassLecturerUser")
+  classStudentRows    ClassStudent[]   @relation("ClassStudentUser")
+  tags                Tag[]
+  questions           Question[]       @relation("QuestionLecturer")
+  assignments         Assignment[]     @relation("AssignmentLecturer")
+  submissions         Submission[]     @relation("SubmissionStudent")
+  circulars           Circular[]       @relation("CircularAuthor")
+  polls               Poll[]           @relation("PollAuthor")
+  pollVotes           PollVote[]
+
+  classesCreated      Class[]          @relation("ClassCreatedBy")
+  classesUpdated      Class[]          @relation("ClassUpdatedBy")
+  classLecturersCreated ClassLecturer[] @relation("ClassLecturerCreatedBy")
+  classStudentsCreated  ClassStudent[]  @relation("ClassStudentCreatedBy")
+  tagsCreated         Tag[]            @relation("TagCreatedBy")
+  tagsUpdated         Tag[]            @relation("TagUpdatedBy")
+  questionsCreated    Question[]       @relation("QuestionCreatedBy")
+  questionsUpdated    Question[]       @relation("QuestionUpdatedBy")
+  assignmentsCreated  Assignment[]     @relation("AssignmentCreatedBy")
+  assignmentsUpdated  Assignment[]     @relation("AssignmentUpdatedBy")
+  circularsUpdated    Circular[]       @relation("CircularUpdatedBy")
+  pollsUpdated        Poll[]           @relation("PollUpdatedBy")
+
+  @@index([role], map: "idx_users_role_active")
+  @@map("users")
+}
+
+model RefreshToken {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  tokenHash         String    @unique @map("token_hash") @db.VarChar(255)
+  family            String    @db.Uuid
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz
+  replacedByTokenId String?   @map("replaced_by_token_id") @db.Uuid
+  createdByIp       String?   @map("created_by_ip") @db.VarChar(45)
+  userAgent         String?   @map("user_agent") @db.VarChar(512)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("RefreshTokenRotation", fields: [replacedByTokenId], references: [id], onDelete: SetNull)
+  replaced   RefreshToken[] @relation("RefreshTokenRotation")
+
+  @@index([userId], map: "idx_refresh_tokens_user_id")
+  @@index([family], map: "idx_refresh_tokens_family")
+  @@index([expiresAt], map: "idx_refresh_tokens_expires")
+  @@map("refresh_tokens")
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @db.VarChar(255)
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  success   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([email, createdAt(sort: Desc)], map: "idx_login_attempts_email_created")
+  @@index([ipAddress, createdAt(sort: Desc)], map: "idx_login_attempts_ip_created")
+  @@map("login_attempts")
+}
+
+model Class {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(150)
+  code        String?   @db.VarChar(50)
+  description String?   @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  createdById String?   @map("created_by") @db.Uuid
+  updatedById String?   @map("updated_by") @db.Uuid
+
+  createdBy User? @relation("ClassCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("ClassUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  lecturers   ClassLecturer[]
+  students    ClassStudent[]
+  assignments Assignment[]
+
+  @@index([isActive], map: "idx_classes_active")
+  @@map("classes")
+}
+
+model ClassLecturer {
+  id          String   @id @default(uuid()) @db.Uuid
+  classId     String   @map("class_id") @db.Uuid
+  lecturerId  String   @map("lecturer_id") @db.Uuid
+  assignedAt  DateTime @default(now()) @map("assigned_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by") @db.Uuid
+
+  class     Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  lecturer  User  @relation("ClassLecturerUser", fields: [lecturerId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("ClassLecturerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([classId, lecturerId], map: "uq_class_lecturers_class_lecturer")
+  @@index([lecturerId], map: "idx_class_lecturers_lecturer_id")
+  @@map("class_lecturers")
+}
+
+model ClassStudent {
+  id          String   @id @default(uuid()) @db.Uuid
+  classId     String   @map("class_id") @db.Uuid
+  studentId   String   @map("student_id") @db.Uuid
+  enrolledAt  DateTime @default(now()) @map("enrolled_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdById String?  @map("created_by") @db.Uuid
+
+  class     Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student   User  @relation("ClassStudentUser", fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("ClassStudentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([classId, studentId], map: "uq_class_students_class_student")
+  @@index([studentId], map: "idx_class_students_student_id")
+  @@map("class_students")
+}
+
+model Tag {
+  id          String    @id @default(uuid()) @db.Uuid
+  lecturerId  String    @map("lecturer_id") @db.Uuid
+  name        String    @db.VarChar(100)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  createdById String?   @map("created_by") @db.Uuid
+  updatedById String?   @map("updated_by") @db.Uuid
+
+  lecturer  User  @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("TagCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("TagUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  questionTags QuestionTag[]
+
+  @@unique([lecturerId, name], map: "uidx_tags_lecturer_name")
+  @@index([lecturerId], map: "idx_tags_lecturer_id")
+  @@map("tags")
+}
+
+model Question {
+  id           String          @id @default(uuid()) @db.Uuid
+  lecturerId   String          @map("lecturer_id") @db.Uuid
+  type         QuestionType
+  title        String          @db.VarChar(255)
+  description  String          @db.Text
+  explanation  String?         @db.Text
+  defaultMarks Decimal         @map("default_marks") @db.Decimal(8, 2)
+  difficulty   DifficultyLevel
+  subject      String?         @db.VarChar(150)
+  topic        String?         @db.VarChar(150)
+  correctText  String?         @map("correct_text") @db.Text
+  imageUrl     String?         @map("image_url") @db.Text
+  imageBlobKey String?         @map("image_blob_key") @db.VarChar(512)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime?       @map("deleted_at") @db.Timestamptz
+  createdById  String?         @map("created_by") @db.Uuid
+  updatedById  String?         @map("updated_by") @db.Uuid
+
+  lecturer  User  @relation("QuestionLecturer", fields: [lecturerId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("QuestionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("QuestionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  options             QuestionOption[]
+  questionTags        QuestionTag[]
+  assignmentQuestions AssignmentQuestion[]
+
+  @@index([lecturerId, createdAt(sort: Desc)], map: "idx_questions_lecturer_created")
+  @@index([lecturerId, subject], map: "idx_questions_lecturer_subject")
+  @@index([lecturerId, topic], map: "idx_questions_lecturer_topic")
+  @@index([lecturerId, difficulty], map: "idx_questions_lecturer_difficulty")
+  @@index([lecturerId, type], map: "idx_questions_lecturer_type")
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid()) @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  optionText String   @map("option_text") @db.Text
+  isCorrect  Boolean  @default(false) @map("is_correct")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId], map: "idx_question_options_question_id")
+  @@map("question_options")
+}
+
+model QuestionTag {
+  id         String   @id @default(uuid()) @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  tagId      String   @map("tag_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, tagId], map: "uidx_question_tags_pair")
+  @@index([tagId], map: "idx_question_tags_tag_id")
+  @@map("question_tags")
+}
+
+model Assignment {
+  id               String       @id @default(uuid()) @db.Uuid
+  classId          String       @map("class_id") @db.Uuid
+  lecturerId       String       @map("lecturer_id") @db.Uuid
+  title            String       @db.VarChar(255)
+  description      String?      @db.Text
+  startAt          DateTime     @map("start_at") @db.Timestamptz
+  endAt            DateTime     @map("end_at") @db.Timestamptz
+  durationMinutes  Int          @map("duration_minutes")
+  resultPolicy     ResultPolicy @map("result_policy")
+  resultDeclareAt  DateTime?    @map("result_declare_at") @db.Timestamptz
+  isPublished      Boolean      @default(true) @map("is_published")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz
+  createdById      String?      @map("created_by") @db.Uuid
+  updatedById      String?      @map("updated_by") @db.Uuid
+
+  class     Class @relation(fields: [classId], references: [id], onDelete: Restrict)
+  lecturer  User  @relation("AssignmentLecturer", fields: [lecturerId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("AssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("AssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  questions   AssignmentQuestion[]
+  submissions Submission[]
+
+  @@index([classId, startAt(sort: Desc)], map: "idx_assignments_class_start")
+  @@index([lecturerId, createdAt(sort: Desc)], map: "idx_assignments_lecturer_created")
+  @@index([startAt, endAt], map: "idx_assignments_window")
+  @@map("assignments")
+}
+
+model AssignmentQuestion {
+  id           String   @id @default(uuid()) @db.Uuid
+  assignmentId String   @map("assignment_id") @db.Uuid
+  questionId   String   @map("question_id") @db.Uuid
+  marks        Decimal  @db.Decimal(8, 2)
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  assignment        Assignment         @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  question          Question           @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  submissionAnswers SubmissionAnswer[]
+
+  @@unique([assignmentId, questionId], map: "uidx_assignment_questions_pair")
+  @@index([assignmentId, sortOrder], map: "idx_assignment_questions_assignment_sort")
+  @@index([questionId], map: "idx_assignment_questions_question_id")
+  @@map("assignment_questions")
+}
+
+model Submission {
+  id             String           @id @default(uuid()) @db.Uuid
+  assignmentId   String           @map("assignment_id") @db.Uuid
+  studentId      String           @map("student_id") @db.Uuid
+  status         SubmissionStatus @default(IN_PROGRESS)
+  startedAt      DateTime         @default(now()) @map("started_at") @db.Timestamptz
+  endsAt         DateTime         @map("ends_at") @db.Timestamptz
+  submittedAt    DateTime?        @map("submitted_at") @db.Timestamptz
+  score          Decimal?         @db.Decimal(10, 2)
+  maxScore       Decimal?         @map("max_score") @db.Decimal(10, 2)
+  correctCount   Int?             @map("correct_count")
+  incorrectCount Int?             @map("incorrect_count")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  assignment Assignment         @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  student    User               @relation("SubmissionStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  answers    SubmissionAnswer[]
+
+  @@unique([assignmentId, studentId], map: "uq_submissions_assignment_student")
+  @@index([studentId, startedAt(sort: Desc)], map: "idx_submissions_student_started")
+  @@index([assignmentId, status], map: "idx_submissions_assignment_status")
+  @@index([endsAt], map: "idx_submissions_autosubmit")
+  @@map("submissions")
+}
+
+model SubmissionAnswer {
+  id                   String    @id @default(uuid()) @db.Uuid
+  submissionId         String    @map("submission_id") @db.Uuid
+  assignmentQuestionId String    @map("assignment_question_id") @db.Uuid
+  answer               Json?     @db.JsonB
+  isCorrect            Boolean?  @map("is_correct")
+  marksAwarded         Decimal?  @map("marks_awarded") @db.Decimal(8, 2)
+  gradedAt             DateTime? @map("graded_at") @db.Timestamptz
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  submission         Submission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  assignmentQuestion AssignmentQuestion @relation(fields: [assignmentQuestionId], references: [id], onDelete: Restrict)
+  aiEvaluation       AiEvaluation?
+
+  @@unique([submissionId, assignmentQuestionId], map: "uidx_submission_answers_pair")
+  @@index([assignmentQuestionId], map: "idx_submission_answers_aq_id")
+  @@map("submission_answers")
+}
+
+model Circular {
+  id               String    @id @default(uuid()) @db.Uuid
+  createdById      String    @map("created_by_id") @db.Uuid
+  title            String    @db.VarChar(255)
+  description      String    @db.Text
+  coverImageUrl    String?   @map("cover_image_url") @db.Text
+  coverImageBlobKey String?  @map("cover_image_blob_key") @db.VarChar(512)
+  publishAt        DateTime  @map("publish_at") @db.Timestamptz
+  isPublished      Boolean   @default(false) @map("is_published")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+  updatedById      String?   @map("updated_by") @db.Uuid
+
+  author    User  @relation("CircularAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User? @relation("CircularUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  audiences CircularAudience[]
+
+  @@index([publishAt(sort: Desc)], map: "idx_circulars_publish")
+  @@index([createdById, createdAt(sort: Desc)], map: "idx_circulars_author")
+  @@index([publishAt], map: "idx_circulars_scheduled")
+  @@map("circulars")
+}
+
+model CircularAudience {
+  id         String             @id @default(uuid()) @db.Uuid
+  circularId String             @map("circular_id") @db.Uuid
+  targetType AudienceTargetType @map("target_type")
+  targetId   String?            @map("target_id") @db.Uuid
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  circular Circular @relation(fields: [circularId], references: [id], onDelete: Cascade)
+
+  @@index([circularId], map: "idx_circular_audiences_circular")
+  @@index([targetType, targetId], map: "idx_circular_audiences_target")
+  @@map("circular_audiences")
+}
+
+model Poll {
+  id               String               @id @default(uuid()) @db.Uuid
+  createdById      String               @map("created_by_id") @db.Uuid
+  title            String               @db.VarChar(255)
+  description      String?              @db.Text
+  publishAt        DateTime             @map("publish_at") @db.Timestamptz
+  expireAt         DateTime             @map("expire_at") @db.Timestamptz
+  resultVisibility PollResultVisibility @default(AFTER_VOTE) @map("result_visibility")
+  isPublished      Boolean              @default(false) @map("is_published")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?            @map("deleted_at") @db.Timestamptz
+  updatedById      String?              @map("updated_by") @db.Uuid
+
+  author    User  @relation("PollAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User? @relation("PollUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  options   PollOption[]
+  audiences PollAudience[]
+  votes     PollVote[]
+
+  @@index([publishAt, expireAt], map: "idx_polls_active")
+  @@index([publishAt], map: "idx_polls_scheduled")
+  @@index([createdById, createdAt(sort: Desc)], map: "idx_polls_author")
+  @@map("polls")
+}
+
+model PollOption {
+  id         String   @id @default(uuid()) @db.Uuid
+  pollId     String   @map("poll_id") @db.Uuid
+  optionText String   @map("option_text") @db.VarChar(500)
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+
+  @@index([pollId, sortOrder], map: "idx_poll_options_poll_sort")
+  @@map("poll_options")
+}
+
+model PollAudience {
+  id         String             @id @default(uuid()) @db.Uuid
+  pollId     String             @map("poll_id") @db.Uuid
+  targetType AudienceTargetType @map("target_type")
+  targetId   String?            @map("target_id") @db.Uuid
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  @@index([pollId], map: "idx_poll_audiences_poll")
+  @@index([targetType, targetId], map: "idx_poll_audiences_target")
+  @@map("poll_audiences")
+}
+
+model PollVote {
+  id        String   @id @default(uuid()) @db.Uuid
+  pollId    String   @map("poll_id") @db.Uuid
+  optionId  String   @map("option_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId], map: "uidx_poll_votes_poll_user")
+  @@index([optionId], map: "idx_poll_votes_option_id")
+  @@index([pollId], map: "idx_poll_votes_poll_id")
+  @@map("poll_votes")
+}
+
+model AiEvaluation {
+  id                  String             @id @default(uuid()) @db.Uuid
+  submissionAnswerId  String             @unique @map("submission_answer_id") @db.Uuid
+  status              AiEvaluationStatus @default(PENDING)
+  similarityPercent   Decimal?           @map("similarity_percent") @db.Decimal(5, 2)
+  marksAwarded        Decimal?           @map("marks_awarded") @db.Decimal(8, 2)
+  suggestedCorrections String?             @map("suggested_corrections") @db.Text
+  feedback            String?            @db.Text
+  modelName           String?            @map("model_name") @db.VarChar(100)
+  rawResponse         Json?              @map("raw_response") @db.JsonB
+  errorMessage        String?            @map("error_message") @db.Text
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  submissionAnswer SubmissionAnswer @relation(fields: [submissionAnswerId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt], map: "idx_ai_evaluations_status")
+  @@map("ai_evaluations")
+}
