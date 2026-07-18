@@ -4,6 +4,7 @@ import { authorize } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import * as usersController from './users.controller';
 import {
+  bulkCreateUsersSchema,
   createUserSchema,
   listUsersQuerySchema,
   updateUserSchema,
@@ -16,6 +17,7 @@ usersRouter.use(authenticate, authorize('ADMIN'));
 
 usersRouter.get('/', validate(listUsersQuerySchema, 'query'), usersController.list);
 usersRouter.post('/', validate(createUserSchema), usersController.create);
+usersRouter.post('/bulk', validate(bulkCreateUsersSchema), usersController.bulkCreate);
 usersRouter.get('/:id', validate(userIdParamSchema, 'params'), usersController.get);
 usersRouter.patch(
   '/:id',

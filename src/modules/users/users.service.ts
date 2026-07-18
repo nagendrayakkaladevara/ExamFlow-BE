@@ -3,8 +3,22 @@ import { hashPassword } from '../../lib/password';
 import { ApiError } from '../../utils/ApiError';
 import { encodeCursor, parseCursor } from '../../utils/pagination';
 import { normalizeEmail, toPublicUser, userPublicSelect } from '../../utils/user';
-import type { createUserSchema, listUsersQuerySchema, updateUserSchema } from './users.schema';
+import type {
+  bulkCreateUsersSchema,
+  createUserSchema,
+  listUsersQuerySchema,
+  updateUserSchema,
+} from './users.schema';
 import type { z } from 'zod';
+
+export type BulkImportRowResult =
+  | { row: number; status: 'created'; user: ReturnType<typeof toPublicUser> }
+  | { row: number; status: 'failed'; email: string; message: string };
+
+export type BulkImportResult = {
+  summary: { total: number; created: number; failed: number };
+  results: BulkImportRowResult[];
+};
 
 export async function listUsers(query: z.infer<typeof listUsersQuerySchema>) {
   const cursor = parseCursor(query.cursor);
@@ -74,6 +88,90 @@ export async function createUser(
     select: userPublicSelect,
   });
   return toPublicUser(user);
+}
+
+export async function bulkCreateStudents(
+  adminId: string,
+  input: z.infer<typeof bulkCreateUsersSchema>,
+): Promise<BulkImportResult> {
+  const results: BulkImportRowResult[] = [];
+  const seenEmails = new Set<string>();
+
+  const normalizedRows = input.students.map((student, index) => ({
+    row: index + 1,
+    email: normalizeEmail(student.email),
+    password: student.password ?? input.defaultPassword!,
+    firstName: student.firstName.trim(),
+    lastName: student.lastName.trim(),
+  }));
+
+  const existingUsers = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      email: { in: normalizedRows.map((row) => row.email) },
+    },
+    select: { email: true },
+  });
+  const existingEmails = new Set(existingUsers.map((user) => user.email));
+
+  for (const row of normalizedRows) {
+    if (seenEmails.has(row.email)) {
+      results.push({
+        row: row.row,
+        status: 'failed',
+        email: row.email,
+        message: 'Duplicate email in import file',
+      });
+      continue;
+    }
+    seenEmails.add(row.email);
+
+    if (existingEmails.has(row.email)) {
+      results.push({
+        row: row.row,
+        status: 'failed',
+        email: row.email,
+        message: 'Email already in use',
+      });
+      continue;
+    }
+
+    try {
+      const passwordHash = await hashPassword(row.password);
+      const user = await prisma.user.create({
+        data: {
+          email: row.email,
+          passwordHash,
+          role: 'STUDENT',
+          firstName: row.firstName,
+          lastName: row.lastName,
+          createdById: adminId,
+          updatedById: adminId,
+        },
+        select: userPublicSelect,
+      });
+      existingEmails.add(row.email);
+      results.push({ row: row.row, status: 'created', user: toPublicUser(user) });
+    } catch {
+      results.push({
+        row: row.row,
+        status: 'failed',
+        email: row.email,
+        message: 'Unable to create student',
+      });
+    }
+  }
+
+  const created = results.filter((result) => result.status === 'created').length;
+
+  return {
+    summary: {
+      total: normalizedRows.length,
+      created,
+      failed: normalizedRows.length - created,
+    },
+    results,
+  };
 }
 
 export async function updateUser(

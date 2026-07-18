@@ -21,6 +21,11 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
   ok(res, req, user, 201);
 });
 
+export const bulkCreate = asyncHandler(async (req: Request, res: Response) => {
+  const result = await usersService.bulkCreateStudents(req.user!.id, req.body);
+  ok(res, req, result, 201);
+});
+
 export const update = asyncHandler(async (req: Request, res: Response) => {
   const user = await usersService.updateUser(req.user!.id, req.params.id, req.body);
   ok(res, req, user);
