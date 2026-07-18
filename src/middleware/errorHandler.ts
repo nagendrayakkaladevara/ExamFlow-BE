@@ -57,6 +57,10 @@ export function errorHandler(
 
   logger.error({ err, requestId }, 'Unhandled error');
 
+  if (env.NODE_ENV !== 'production' && err instanceof Error) {
+    logger.error({ stack: err.stack, requestId }, 'Error stack');
+  }
+
   const body: ApiErrorResponse = {
     success: false,
     error: {

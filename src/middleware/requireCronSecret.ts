@@ -1,8 +1,20 @@
-/**
- * Cron secret bearer check for `/internal/cron/*` routes.
- *
- * Placeholder — implement when internal cron routes are added.
- * See ARCHITECTURE.md §4.8
- */
+import type { NextFunction, Request, Response } from 'express';
+import { env } from '../config/env';
+import { ApiError } from '../utils/ApiError';
 
-export {};
+/** Verify cron routes using a shared bearer secret. */
+export function requireCronSecret(req: Request, _res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    next(ApiError.unauthorized('Missing cron authorization'));
+    return;
+  }
+
+  const token = header.slice('Bearer '.length).trim();
+  if (!token || token !== env.CRON_SECRET) {
+    next(ApiError.unauthorized('Invalid cron secret'));
+    return;
+  }
+
+  next();
+}

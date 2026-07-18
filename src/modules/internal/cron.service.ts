@@ -1,7 +1,13 @@
-/**
- * Cron job service (auto-submit, scheduled publish).
- *
- * Placeholder — implement when Vercel Cron routes are added.
- */
+import { autoSubmitExpired } from '../assignments/assignments.service';
+import { publishScheduledCirculars } from '../circulars/circulars.service';
+import { publishScheduledPolls } from '../polls/polls.service';
 
-export {};
+export async function runAutoSubmit() {
+  return autoSubmitExpired();
+}
+
+export async function runPublishScheduled() {
+  const circulars = await publishScheduledCirculars();
+  const polls = await publishScheduledPolls();
+  return { circulars, polls };
+}
