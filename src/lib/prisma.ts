@@ -1,10 +1,10 @@
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import { PrismaClient } from '@prisma/client';
 import { PrismaNeon } from '@prisma/adapter-neon';
-import ws from 'ws';
 import { env } from '../config/env';
 
-neonConfig.webSocketConstructor = ws;
+// HTTP fetch mode for Vercel serverless — avoids bundling the `ws` package.
+neonConfig.poolQueryViaFetch = true;
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

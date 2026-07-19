@@ -7,10 +7,39 @@ const DEV_JWT_ACCESS_SECRET = 'dev-jwt-access-secret-min-32-characters!!';
 const DEV_JWT_REFRESH_SECRET = 'dev-jwt-refresh-secret-min-32-characters!';
 const DEV_CRON_SECRET = 'dev-cron-secret-min-32-characters-long!!';
 
-const boolFromString = z
-  .enum(['true', 'false'])
-  .default('false')
-  .transform((value) => value === 'true');
+/** Vercel often stores unset optional vars as "" — treat as undefined. */
+function emptyToUndefined(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string' && value.trim() === '') return undefined;
+  return value;
+}
+
+function stripQuotes(value: string) {
+  return value.replace(/^['"]|['"]$/g, '').trim();
+}
+
+const optionalString = z.preprocess(
+  emptyToUndefined,
+  z.string().min(1).optional(),
+);
+
+const optionalUrl = z.preprocess(
+  emptyToUndefined,
+  z.string().url().optional(),
+);
+
+const optionalEmail = z.preprocess(
+  emptyToUndefined,
+  z.string().email().optional(),
+);
+
+const boolFromString = z.preprocess(
+  emptyToUndefined,
+  z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+);
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -20,20 +49,20 @@ const envSchema = z.object({
     .default('info'),
   CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
   BODY_SIZE_LIMIT: z.string().min(1).default('100kb'),
-  DATABASE_URL: z.string().min(1),
-  DIRECT_URL: z.string().min(1).optional(),
+  DATABASE_URL: z.string().min(1).transform(stripQuotes),
+  DIRECT_URL: z.preprocess(emptyToUndefined, z.string().min(1).transform(stripQuotes).optional()),
   JWT_ACCESS_SECRET: z.string().min(32).default(DEV_JWT_ACCESS_SECRET),
   JWT_REFRESH_SECRET: z.string().min(32).default(DEV_JWT_REFRESH_SECRET),
   JWT_ACCESS_EXPIRES_IN: z.string().min(1).default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().min(1).default('7d'),
   COOKIE_SECURE: boolFromString,
-  COOKIE_DOMAIN: z.string().min(1).optional(),
+  COOKIE_DOMAIN: optionalString,
   CRON_SECRET: z.string().min(32).default(DEV_CRON_SECRET),
-  BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
-  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
-  SEED_ADMIN_EMAIL: z.string().email().optional(),
-  SEED_ADMIN_PASSWORD: z.string().min(1).optional(),
+  BLOB_READ_WRITE_TOKEN: optionalString,
+  UPSTASH_REDIS_REST_URL: optionalUrl,
+  UPSTASH_REDIS_REST_TOKEN: optionalString,
+  SEED_ADMIN_EMAIL: optionalEmail,
+  SEED_ADMIN_PASSWORD: optionalString,
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -51,12 +80,18 @@ const directUrl =
   data.DIRECT_URL ??
   data.DATABASE_URL.replace('-pooler.', '.');
 
+function envVarSet(name: string) {
+  const value = process.env[name];
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 if (data.NODE_ENV === 'production') {
   const missing: string[] = [];
 
-  if (!process.env.JWT_ACCESS_SECRET) missing.push('JWT_ACCESS_SECRET');
-  if (!process.env.JWT_REFRESH_SECRET) missing.push('JWT_REFRESH_SECRET');
-  if (!process.env.CRON_SECRET) missing.push('CRON_SECRET');
+  if (!envVarSet('JWT_ACCESS_SECRET')) missing.push('JWT_ACCESS_SECRET');
+  if (!envVarSet('JWT_REFRESH_SECRET')) missing.push('JWT_REFRESH_SECRET');
+  if (!envVarSet('CRON_SECRET')) missing.push('CRON_SECRET');
+  if (!envVarSet('DATABASE_URL')) missing.push('DATABASE_URL');
 
   if (missing.length > 0) {
     const message = `Missing required production environment variables: ${missing.join(', ')}`;
