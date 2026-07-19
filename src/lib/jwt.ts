@@ -11,10 +11,14 @@ type JoseModule = typeof import('jose');
 
 let joseModulePromise: Promise<JoseModule> | undefined;
 
-/** jose is ESM-only; dynamic import works from Vercel's CommonJS serverless bundle. */
+/**
+ * jose is ESM-only. Bare `import('jose')` is rewritten to `require('jose')` when
+ * TypeScript targets CommonJS, which crashes on Vercel. The Function wrapper keeps
+ * a real dynamic import in the emitted JavaScript.
+ */
 function loadJose(): Promise<JoseModule> {
   if (!joseModulePromise) {
-    joseModulePromise = import('jose');
+    joseModulePromise = new Function('return import("jose")')() as Promise<JoseModule>;
   }
   return joseModulePromise;
 }
