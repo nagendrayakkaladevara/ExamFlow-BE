@@ -3,8 +3,8 @@ import { UserRole } from '@prisma/client';
 import { prisma } from '../src/lib/prisma';
 import { hashPassword } from '../src/lib/password';
 
-const ADMIN_EMAIL = (process.env.SEED_ADMIN_EMAIL ?? 'admin@examflow.local').toLowerCase();
-const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'Admin123!@#';
+const ADMIN_EMAIL = (process.env.SEED_ADMIN_EMAIL ?? 'admin@svecw.edu.in').toLowerCase();
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'admin1';
 
 async function main() {
   const passwordHash = await hashPassword(ADMIN_PASSWORD);

@@ -11,6 +11,7 @@ import { requestIdMiddleware } from './middleware/requestId';
 import { notFoundHandler } from './middleware/notFound';
 import { errorHandler } from './middleware/errorHandler';
 import { healthRouter } from './routes/health.routes';
+import { rootRouter } from './routes/root.routes';
 import { v1Router } from './routes/v1';
 
 /**
@@ -40,6 +41,7 @@ export function createApp() {
   app.use(express.urlencoded({ extended: false, limit: env.BODY_SIZE_LIMIT }));
   app.use(cookieParser());
 
+  app.use('/', rootRouter);
   app.use('/healthz', healthRouter);
   app.use(API_V1_PREFIX, v1Router);
 
