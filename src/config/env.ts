@@ -39,8 +39,9 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
-  process.exit(1);
+  const message = `Invalid environment variables: ${JSON.stringify(parsed.error.flatten().fieldErrors)}`;
+  console.error(message);
+  throw new Error(message);
 }
 
 const data = parsed.data;
@@ -56,12 +57,11 @@ if (data.NODE_ENV === 'production') {
   if (!process.env.JWT_ACCESS_SECRET) missing.push('JWT_ACCESS_SECRET');
   if (!process.env.JWT_REFRESH_SECRET) missing.push('JWT_REFRESH_SECRET');
   if (!process.env.CRON_SECRET) missing.push('CRON_SECRET');
-  if (!process.env.BLOB_READ_WRITE_TOKEN) missing.push('BLOB_READ_WRITE_TOKEN');
-  if (!process.env.DIRECT_URL) missing.push('DIRECT_URL');
 
   if (missing.length > 0) {
-    console.error(`Missing required production environment variables: ${missing.join(', ')}`);
-    process.exit(1);
+    const message = `Missing required production environment variables: ${missing.join(', ')}`;
+    console.error(message);
+    throw new Error(message);
   }
 }
 
