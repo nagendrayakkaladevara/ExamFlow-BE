@@ -105,4 +105,9 @@ export const env = {
   DIRECT_URL: directUrl,
 };
 
+/** Prisma schema reads `env("DIRECT_URL")` — ensure it exists when only DATABASE_URL is set on Vercel. */
+if (!process.env.DIRECT_URL?.trim()) {
+  process.env.DIRECT_URL = directUrl;
+}
+
 export type Env = typeof env;
