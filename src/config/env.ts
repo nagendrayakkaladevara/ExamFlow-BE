@@ -53,8 +53,14 @@ const envSchema = z.object({
   DIRECT_URL: z.preprocess(emptyToUndefined, z.string().min(1).transform(stripQuotes).optional()),
   JWT_ACCESS_SECRET: z.string().min(32).default(DEV_JWT_ACCESS_SECRET),
   JWT_REFRESH_SECRET: z.string().min(32).default(DEV_JWT_REFRESH_SECRET),
-  JWT_ACCESS_EXPIRES_IN: z.string().min(1).default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().min(1).default('7d'),
+  JWT_ACCESS_EXPIRES_IN: z.preprocess(
+    emptyToUndefined,
+    z.string().min(1).default('15m').transform(stripQuotes),
+  ),
+  JWT_REFRESH_EXPIRES_IN: z.preprocess(
+    emptyToUndefined,
+    z.string().min(1).default('7d').transform(stripQuotes),
+  ),
   COOKIE_SECURE: boolFromString,
   COOKIE_DOMAIN: optionalString,
   CRON_SECRET: z.string().min(32).default(DEV_CRON_SECRET),

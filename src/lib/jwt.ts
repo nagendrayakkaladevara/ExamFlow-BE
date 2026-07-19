@@ -1,3 +1,4 @@
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import type { UserRole } from '@prisma/client';
 import { env } from '../config/env';
 
@@ -7,45 +8,29 @@ export interface AccessTokenPayload {
   tokenVersion: number;
 }
 
-type JoseModule = typeof import('jose');
-
-let joseModulePromise: Promise<JoseModule> | undefined;
-
-/**
- * jose is ESM-only. Bare `import('jose')` is rewritten to `require('jose')` when
- * TypeScript targets CommonJS, which crashes on Vercel. The Function wrapper keeps
- * a real dynamic import in the emitted JavaScript.
- */
-function loadJose(): Promise<JoseModule> {
-  if (!joseModulePromise) {
-    joseModulePromise = new Function('return import("jose")')() as Promise<JoseModule>;
-  }
-  return joseModulePromise;
-}
-
-function accessSecretKey() {
-  return new TextEncoder().encode(env.JWT_ACCESS_SECRET);
-}
-
 /** Issue a short-lived access JWT. */
 export async function signAccessToken(payload: AccessTokenPayload): Promise<string> {
-  const { SignJWT } = await loadJose();
+  const options: SignOptions = {
+    algorithm: 'HS256',
+    subject: payload.sub,
+    expiresIn: env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'],
+  };
 
-  return new SignJWT({
-    role: payload.role,
-    tokenVersion: payload.tokenVersion,
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(payload.sub)
-    .setIssuedAt()
-    .setExpirationTime(env.JWT_ACCESS_EXPIRES_IN)
-    .sign(accessSecretKey());
+  return jwt.sign(
+    {
+      role: payload.role,
+      tokenVersion: payload.tokenVersion,
+    },
+    env.JWT_ACCESS_SECRET,
+    options,
+  );
 }
 
 /** Verify and decode an access JWT. */
 export async function verifyAccessToken(token: string): Promise<AccessTokenPayload> {
-  const { jwtVerify } = await loadJose();
-  const { payload } = await jwtVerify(token, accessSecretKey());
+  const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, {
+    algorithms: ['HS256'],
+  }) as jwt.JwtPayload;
 
   if (
     typeof payload.sub !== 'string' ||

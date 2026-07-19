@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'crypto';
+import ms, { type StringValue } from 'ms';
 
 /** Generate a cryptographically secure opaque refresh token. */
 export function generateOpaqueToken(): string {
@@ -15,26 +16,11 @@ export function generateTokenFamily(): string {
   return randomUUID();
 }
 
-/** Parse duration strings like 15m, 7d, 1h into seconds. */
+/** Parse duration strings like 15m, 7d, 2 days into seconds. */
 export function parseDurationToSeconds(duration: string): number {
-  const match = /^(\d+)([smhd])$/.exec(duration.trim());
-  if (!match) {
+  const milliseconds = ms(duration.trim() as StringValue);
+  if (milliseconds === undefined) {
     throw new Error(`Invalid duration format: ${duration}`);
   }
-
-  const value = Number(match[1]);
-  const unit = match[2];
-
-  switch (unit) {
-    case 's':
-      return value;
-    case 'm':
-      return value * 60;
-    case 'h':
-      return value * 60 * 60;
-    case 'd':
-      return value * 60 * 60 * 24;
-    default:
-      throw new Error(`Unsupported duration unit: ${unit}`);
-  }
+  return Math.floor(milliseconds / 1000);
 }
