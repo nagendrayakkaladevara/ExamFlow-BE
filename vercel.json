@@ -1,9 +1,5 @@
 {
   "version": 2,
   "builds": [{ "src": "api/index.ts", "use": "@vercel/node" }],
-  "routes": [{ "src": "/(.*)", "dest": "/api/index.ts" }],
-  "crons": [
-    { "path": "/api/v1/internal/cron/auto-submit", "schedule": "*/1 * * * *" },
-    { "path": "/api/v1/internal/cron/publish-scheduled", "schedule": "*/5 * * * *" }
-  ]
+  "routes": [{ "src": "/(.*)", "dest": "/api/index.ts" }]
 }

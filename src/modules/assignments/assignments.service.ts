@@ -236,6 +236,40 @@ function computePersonalDeadline(startedAt: Date, durationMinutes: number, endAt
   return personalEnd < endAt ? personalEnd : endAt;
 }
 
+function isAttemptExpired(
+  submission: { endsAt: Date },
+  assignment: { endAt: Date },
+  now: Date = new Date(),
+) {
+  return now > submission.endsAt || now > assignment.endAt;
+}
+
+async function ensureSubmissionFinalizedIfExpired(
+  submission: { id: string; status: string; endsAt: Date },
+  assignment: { endAt: Date },
+) {
+  if (submission.status !== 'IN_PROGRESS') return;
+  if (!isAttemptExpired(submission, assignment)) return;
+  await finalizeSubmission(submission.id, 'AUTO_SUBMITTED');
+}
+
+export async function finalizeExpiredForAssignment(assignmentId: string) {
+  const now = new Date();
+  const expired = await prisma.submission.findMany({
+    where: {
+      assignmentId,
+      status: 'IN_PROGRESS',
+      OR: [{ endsAt: { lte: now } }, { assignment: { endAt: { lte: now } } }],
+    },
+    take: 100,
+  });
+
+  for (const sub of expired) {
+    await finalizeSubmission(sub.id, 'AUTO_SUBMITTED');
+  }
+  return { processed: expired.length };
+}
+
 export async function startAttempt(studentId: string, assignmentId: string) {
   const assignment = await prisma.assignment.findFirst({
     where: { id: assignmentId, deletedAt: null, isPublished: true },
@@ -259,7 +293,14 @@ export async function startAttempt(studentId: string, assignmentId: string) {
     if (existing.status !== 'IN_PROGRESS') {
       throw ApiError.conflict('Attempt already submitted', 'ALREADY_SUBMITTED');
     }
-    return existing;
+    await ensureSubmissionFinalizedIfExpired(existing, assignment);
+    const refreshed = await prisma.submission.findUnique({
+      where: { assignmentId_studentId: { assignmentId, studentId } },
+    });
+    if (!refreshed || refreshed.status !== 'IN_PROGRESS') {
+      throw ApiError.conflict('Attempt already submitted', 'ALREADY_SUBMITTED');
+    }
+    return refreshed;
   }
 
   const endsAt = computePersonalDeadline(now, assignment.durationMinutes, assignment.endAt);
@@ -321,8 +362,9 @@ export async function autosaveAnswers(
   }
 
   const now = new Date();
-  if (now > submission.endsAt || now > submission.assignment.endAt) {
-    throw ApiError.forbidden('Deadline passed', 'DEADLINE_PASSED');
+  if (isAttemptExpired(submission, submission.assignment, now)) {
+    await finalizeSubmission(submission.id, 'AUTO_SUBMITTED');
+    throw ApiError.conflict('Attempt already submitted', 'ALREADY_SUBMITTED');
   }
 
   for (const item of input.answers) {
@@ -427,16 +469,15 @@ export async function submitAttempt(studentId: string, assignmentId: string) {
   if (!submission) throw ApiError.notFound('Attempt not found', 'ATTEMPT_NOT_FOUND');
   if (submission.status !== 'IN_PROGRESS') return submission;
 
-  const now = new Date();
-  if (now > submission.endsAt && now > submission.assignment.endAt) {
-    throw ApiError.forbidden('Deadline passed', 'DEADLINE_PASSED');
+  if (isAttemptExpired(submission, submission.assignment)) {
+    return finalizeSubmission(submission.id, 'AUTO_SUBMITTED');
   }
 
   return finalizeSubmission(submission.id, 'SUBMITTED');
 }
 
 export async function getResult(studentId: string, assignmentId: string) {
-  const submission = await prisma.submission.findUnique({
+  let submission = await prisma.submission.findUnique({
     where: { assignmentId_studentId: { assignmentId, studentId } },
     include: {
       assignment: true,
@@ -451,12 +492,29 @@ export async function getResult(studentId: string, assignmentId: string) {
   });
   if (!submission) throw ApiError.notFound('No attempt found', 'NO_ATTEMPT');
 
+  if (submission.status === 'IN_PROGRESS') {
+    await ensureSubmissionFinalizedIfExpired(submission, submission.assignment);
+    submission = await prisma.submission.findUnique({
+      where: { assignmentId_studentId: { assignmentId, studentId } },
+      include: {
+        assignment: true,
+        answers: {
+          include: {
+            assignmentQuestion: {
+              include: { question: { include: { options: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!submission) throw ApiError.notFound('No attempt found', 'NO_ATTEMPT');
+    if (submission.status === 'IN_PROGRESS') {
+      throw ApiError.forbidden('Attempt in progress', 'IN_PROGRESS');
+    }
+  }
+
   const { assignment } = submission;
   const now = new Date();
-
-  if (submission.status === 'IN_PROGRESS') {
-    throw ApiError.forbidden('Attempt in progress', 'IN_PROGRESS');
-  }
 
   let canView = false;
   switch (assignment.resultPolicy) {

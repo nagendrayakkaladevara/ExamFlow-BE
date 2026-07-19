@@ -1,0 +1,25 @@
+name: Scheduled backend tasks
+
+on:
+  schedule:
+    # Daily safety-net sweep (Vercel Hobby cannot run sub-daily crons).
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  scheduled-tasks:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.API_URL != '' && secrets.CRON_SECRET != '' }}
+    steps:
+      - name: Auto-submit expired attempts
+        run: |
+          curl -sf -X POST "${{ secrets.API_URL }}/api/v1/internal/cron/auto-submit" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+      - name: Publish scheduled circulars and polls
+        run: |
+          curl -sf -X POST "${{ secrets.API_URL }}/api/v1/internal/cron/publish-scheduled" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

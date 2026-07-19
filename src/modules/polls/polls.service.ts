@@ -52,6 +52,14 @@ function mapPoll(row: {
   };
 }
 
+/** Flip scheduled items live when publishAt has passed (replaces Vercel Cron on free tier). */
+async function ensurePollPublished(row: { id: string; isPublished: boolean; publishAt: Date }) {
+  if (!row.isPublished && row.publishAt <= new Date()) {
+    await prisma.poll.update({ where: { id: row.id }, data: { isPublished: true } });
+    row.isPublished = true;
+  }
+}
+
 export async function listPolls(user: { id: string; role: UserRole }, limit = 20) {
   const now = new Date();
 
@@ -64,6 +72,8 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
     });
     return rows.map(mapPoll);
   }
+
+  await publishScheduledPolls();
 
   const rows = await prisma.poll.findMany({
     where: {
@@ -98,6 +108,7 @@ export async function getPoll(id: string, user: { id: string; role: UserRole }) 
   if (!row) throw ApiError.notFound('Poll not found');
 
   if (user.role !== 'ADMIN') {
+    await ensurePollPublished(row);
     if (!row.isPublished || row.publishAt > new Date()) {
       throw ApiError.notFound('Poll not found');
     }
@@ -211,13 +222,15 @@ export async function vote(
   input: z.infer<typeof voteSchema>,
 ) {
   const poll = await prisma.poll.findFirst({
-    where: { id: pollId, deletedAt: null, isPublished: true },
+    where: { id: pollId, deletedAt: null },
     include: { audiences: true, options: true },
   });
   if (!poll) throw ApiError.notFound('Poll not found');
 
+  await ensurePollPublished(poll);
+
   const now = new Date();
-  if (poll.publishAt > now || poll.expireAt <= now) {
+  if (!poll.isPublished || poll.publishAt > now || poll.expireAt <= now) {
     throw ApiError.forbidden('Poll is not active', 'POLL_NOT_ACTIVE');
   }
 

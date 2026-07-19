@@ -45,6 +45,14 @@ function mapCircular(row: {
   };
 }
 
+/** Flip scheduled items live when publishAt has passed (replaces Vercel Cron on free tier). */
+async function ensureCircularPublished(row: { id: string; isPublished: boolean; publishAt: Date }) {
+  if (!row.isPublished && row.publishAt <= new Date()) {
+    await prisma.circular.update({ where: { id: row.id }, data: { isPublished: true } });
+    row.isPublished = true;
+  }
+}
+
 export async function listCirculars(
   user: { id: string; role: UserRole },
   query: z.infer<typeof listCircularsQuerySchema>,
@@ -79,6 +87,8 @@ export async function listCirculars(
     };
   }
 
+  await publishScheduledCirculars();
+
   const allRows = await prisma.circular.findMany({
     where: {
       deletedAt: null,
@@ -112,6 +122,7 @@ export async function getCircular(id: string, user: { id: string; role: UserRole
   if (!row) throw ApiError.notFound('Circular not found');
 
   if (user.role !== 'ADMIN') {
+    await ensureCircularPublished(row);
     if (!row.isPublished || row.publishAt > new Date()) {
       throw ApiError.notFound('Circular not found');
     }

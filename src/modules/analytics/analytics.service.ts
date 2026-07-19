@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { ApiError } from '../../utils/ApiError';
 import { decimalToNumber } from '../../utils/pagination';
+import { finalizeExpiredForAssignment } from '../assignments/assignments.service';
 import { assertLecturerAssigned } from '../classes/classes.service';
 
 export async function getStudentAnalytics(studentId: string) {
@@ -72,6 +73,8 @@ export async function getLecturerAssignmentAnalytics(
     include: { class: { include: { students: true } } },
   });
   if (!assignment) throw ApiError.notFound('Assignment not found');
+
+  await finalizeExpiredForAssignment(assignmentId);
 
   const submissions = await prisma.submission.findMany({
     where: { assignmentId },
