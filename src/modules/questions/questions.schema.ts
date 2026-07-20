@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+const optionalImageUrl = z.preprocess(
+  (val) => (val === '' || val === undefined ? undefined : val),
+  z.union([z.string().url(), z.null()]).optional(),
+);
+
+const optionalImageBlobKey = z.preprocess(
+  (val) => (val === '' || val === undefined ? undefined : val),
+  z.union([z.string().max(512), z.null()]).optional(),
+);
+
 export const questionOptionSchema = z
   .object({
     optionText: z.string().min(1),
@@ -19,8 +29,8 @@ export const createQuestionSchema = z
     subject: z.string().max(150).optional(),
     topic: z.string().max(150).optional(),
     correctText: z.string().optional(),
-    imageUrl: z.string().url().optional(),
-    imageBlobKey: z.string().max(512).optional(),
+    imageUrl: optionalImageUrl,
+    imageBlobKey: optionalImageBlobKey,
     tagIds: z.array(z.string().uuid()).optional(),
     options: z.array(questionOptionSchema).optional(),
   })
