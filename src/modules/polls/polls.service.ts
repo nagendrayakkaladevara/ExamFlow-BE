@@ -5,6 +5,31 @@ import { getLecturerClassIds, isAudienceVisible } from '../../utils/audience';
 import type { createPollSchema, updatePollSchema, voteSchema } from './polls.schema';
 import type { z } from 'zod';
 
+type PollTag = 'active' | 'expired' | 'participated';
+
+function buildPollTags(
+  poll: { publishAt: Date; expireAt: Date; isPublished: boolean },
+  hasVoted: boolean,
+  now = new Date(),
+): PollTag[] {
+  const tags: PollTag[] = [];
+  const isLive = poll.isPublished && poll.publishAt <= now;
+  const isExpired = poll.expireAt <= now;
+  const isActive = isLive && !isExpired;
+
+  if (hasVoted) {
+    tags.push('participated');
+  } else if (isActive) {
+    tags.push('active');
+  }
+
+  if (isExpired) {
+    tags.push('expired');
+  }
+
+  return tags;
+}
+
 function validateAudiences(
   role: UserRole,
   audiences: { targetType: string; targetId?: string }[],
@@ -19,18 +44,21 @@ function validateAudiences(
   }
 }
 
-function mapPoll(row: {
-  id: string;
-  title: string;
-  description: string | null;
-  publishAt: Date;
-  expireAt: Date;
-  resultVisibility: PollResultVisibility;
-  isPublished: boolean;
-  createdAt: Date;
-  options?: { id: string; optionText: string; sortOrder: number }[];
-  audiences?: { targetType: string; targetId: string | null }[];
-}) {
+function mapPoll(
+  row: {
+    id: string;
+    title: string;
+    description: string | null;
+    publishAt: Date;
+    expireAt: Date;
+    resultVisibility: PollResultVisibility;
+    isPublished: boolean;
+    createdAt: Date;
+    options?: { id: string; optionText: string; sortOrder: number }[];
+    audiences?: { targetType: string; targetId: string | null }[];
+  },
+  tags: PollTag[] = [],
+) {
   return {
     id: row.id,
     title: row.title,
@@ -40,6 +68,7 @@ function mapPoll(row: {
     resultVisibility: row.resultVisibility,
     isPublished: row.isPublished,
     createdAt: row.createdAt,
+    tags,
     options: row.options?.map((o) => ({
       id: o.id,
       optionText: o.optionText,
@@ -50,6 +79,17 @@ function mapPoll(row: {
       targetId: a.targetId,
     })),
   };
+}
+
+async function getUserVotedPollIds(userId: string, pollIds: string[]) {
+  if (pollIds.length === 0) return new Set<string>();
+
+  const votes = await prisma.pollVote.findMany({
+    where: { userId, pollId: { in: pollIds } },
+    select: { pollId: true },
+  });
+
+  return new Set(votes.map((vote) => vote.pollId));
 }
 
 /** Flip scheduled items live when publishAt has passed (replaces Vercel Cron on free tier). */
@@ -70,7 +110,13 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    return rows.map(mapPoll);
+    const votedPollIds = await getUserVotedPollIds(
+      user.id,
+      rows.map((row) => row.id),
+    );
+    return rows.map((row) =>
+      mapPoll(row, buildPollTags(row, votedPollIds.has(row.id), now)),
+    );
   }
 
   await publishScheduledPolls();
@@ -80,10 +126,9 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
       deletedAt: null,
       isPublished: true,
       publishAt: { lte: now },
-      expireAt: { gt: now },
     },
     include: { options: { orderBy: { sortOrder: 'asc' } }, audiences: true },
-    orderBy: { publishAt: 'desc' },
+    orderBy: [{ expireAt: 'desc' }, { publishAt: 'desc' }],
   });
 
   const visible = [];
@@ -97,7 +142,16 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
       visible.push(row);
     }
   }
-  return visible.slice(0, limit).map(mapPoll);
+
+  const limited = visible.slice(0, limit);
+  const votedPollIds = await getUserVotedPollIds(
+    user.id,
+    limited.map((row) => row.id),
+  );
+
+  return limited.map((row) =>
+    mapPoll(row, buildPollTags(row, votedPollIds.has(row.id), now)),
+  );
 }
 
 export async function getPoll(id: string, user: { id: string; role: UserRole }) {
@@ -119,7 +173,12 @@ export async function getPoll(id: string, user: { id: string; role: UserRole }) 
     if (!visible) throw ApiError.notFound('Poll not found');
   }
 
-  return mapPoll(row);
+  const vote = await prisma.pollVote.findUnique({
+    where: { pollId_userId: { pollId: id, userId: user.id } },
+    select: { pollId: true },
+  });
+
+  return mapPoll(row, buildPollTags(row, !!vote));
 }
 
 export async function createPoll(
