@@ -30,6 +30,24 @@ function validateQuestionInput(
   }
 }
 
+function mapQuestionSearchSummary(row: {
+  id: string;
+  type: QuestionType;
+  title: string;
+  defaultMarks: Prisma.Decimal;
+  difficulty: string;
+  questionTags?: { tag: { id: string; name: string } }[];
+}) {
+  return {
+    id: row.id,
+    title: row.title,
+    type: row.type,
+    difficulty: row.difficulty,
+    marks: decimalToNumber(row.defaultMarks),
+    tags: row.questionTags?.map((qt) => qt.tag) ?? [],
+  };
+}
+
 function mapQuestion(row: {
   id: string;
   type: QuestionType;
@@ -74,6 +92,10 @@ function mapQuestion(row: {
 
 const questionInclude = {
   options: { orderBy: { sortOrder: 'asc' as const } },
+  questionTags: { include: { tag: true } },
+};
+
+const questionSearchInclude = {
   questionTags: { include: { tag: true } },
 };
 
@@ -135,7 +157,7 @@ export async function searchQuestions(
           }
         : {}),
     },
-    include: questionInclude,
+    include: questionSearchInclude,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: query.limit + 1,
   });
@@ -145,7 +167,7 @@ export async function searchQuestions(
   const last = items[items.length - 1];
 
   return {
-    items: items.map((r) => mapQuestion(r)),
+    items: items.map((r) => mapQuestionSearchSummary(r)),
     meta: { nextCursor: hasMore && last ? encodeCursor(last.createdAt, last.id) : null },
   };
 }
