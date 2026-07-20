@@ -22,7 +22,7 @@ export const createQuestionSchema = z
   .object({
     type: z.enum(['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'FILL_BLANK']),
     title: z.string().min(1).max(255),
-    description: z.string().min(1),
+    description: z.string().optional(),
     explanation: z.string().optional(),
     defaultMarks: z.number().positive(),
     difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']),
