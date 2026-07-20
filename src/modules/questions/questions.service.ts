@@ -212,7 +212,7 @@ export async function createQuestion(
       lecturerId,
       type: input.type,
       title: input.title,
-      description: input.description,
+      description: input.description ?? '',
       explanation: input.explanation,
       defaultMarks: input.defaultMarks,
       difficulty: input.difficulty,
@@ -260,7 +260,7 @@ export async function updateQuestion(
       data: {
         ...(input.type ? { type: input.type } : {}),
         ...(input.title ? { title: input.title } : {}),
-        ...(input.description ? { description: input.description } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.explanation !== undefined ? { explanation: input.explanation } : {}),
         ...(input.defaultMarks ? { defaultMarks: input.defaultMarks } : {}),
         ...(input.difficulty ? { difficulty: input.difficulty } : {}),
