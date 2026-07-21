@@ -44,6 +44,34 @@ function validateAudiences(
   }
 }
 
+function formatPostedBy(author: { firstName: string; lastName: string }) {
+  return `${author.firstName} ${author.lastName}`.trim();
+}
+
+function formatOptionsLabel(count: number) {
+  return `${count} ${count === 1 ? 'option' : 'options'}`;
+}
+
+function mapPollListItem(
+  row: {
+    id: string;
+    title: string;
+    expireAt: Date;
+    author: { firstName: string; lastName: string };
+    _count: { options: number };
+  },
+  tags: PollTag[] = [],
+) {
+  return {
+    id: row.id,
+    title: row.title,
+    postedBy: formatPostedBy(row.author),
+    optionsLabel: formatOptionsLabel(row._count.options),
+    expireAt: row.expireAt,
+    tags,
+  };
+}
+
 function mapPoll(
   row: {
     id: string;
@@ -81,6 +109,16 @@ function mapPoll(
   };
 }
 
+const pollListSelect = {
+  id: true,
+  title: true,
+  publishAt: true,
+  expireAt: true,
+  isPublished: true,
+  author: { select: { firstName: true, lastName: true } },
+  _count: { select: { options: true } },
+} as const;
+
 async function getUserVotedPollIds(userId: string, pollIds: string[]) {
   if (pollIds.length === 0) return new Set<string>();
 
@@ -106,7 +144,7 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
   if (user.role === 'ADMIN') {
     const rows = await prisma.poll.findMany({
       where: { deletedAt: null },
-      include: { options: { orderBy: { sortOrder: 'asc' } }, audiences: true },
+      select: pollListSelect,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -115,7 +153,7 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
       rows.map((row) => row.id),
     );
     return rows.map((row) =>
-      mapPoll(row, buildPollTags(row, votedPollIds.has(row.id), now)),
+      mapPollListItem(row, buildPollTags(row, votedPollIds.has(row.id), now)),
     );
   }
 
@@ -127,7 +165,7 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
       isPublished: true,
       publishAt: { lte: now },
     },
-    include: { options: { orderBy: { sortOrder: 'asc' } }, audiences: true },
+    select: { ...pollListSelect, audiences: true },
     orderBy: [{ expireAt: 'desc' }, { publishAt: 'desc' }],
   });
 
@@ -150,7 +188,7 @@ export async function listPolls(user: { id: string; role: UserRole }, limit = 20
   );
 
   return limited.map((row) =>
-    mapPoll(row, buildPollTags(row, votedPollIds.has(row.id), now)),
+    mapPollListItem(row, buildPollTags(row, votedPollIds.has(row.id), now)),
   );
 }
 
