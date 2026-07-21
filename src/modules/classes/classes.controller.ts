@@ -15,8 +15,12 @@ export const listAssigned = asyncHandler(async (req: Request, res: Response) => 
   ok(res, req, await classesService.listLecturerClasses(req.user!.id));
 });
 
+export const listEnrolled = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, req, await classesService.listStudentClasses(req.user!.id));
+});
+
 export const get = asyncHandler(async (req: Request, res: Response) => {
-  ok(res, req, await classesService.getClass(req.params.id));
+  ok(res, req, await classesService.getClass(req.user!, req.params.id));
 });
 
 export const create = asyncHandler(async (req: Request, res: Response) => {
@@ -40,4 +44,12 @@ export const assignLecturer = asyncHandler(async (req: Request, res: Response) =
 export const assignStudent = asyncHandler(async (req: Request, res: Response) => {
   await classesService.assignStudent(req.user!.id, req.params.id, req.body.userId);
   ok(res, req, { enrolled: true });
+});
+
+export const listLecturers = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, req, await classesService.listClassLecturers(req.user!, req.params.id));
+});
+
+export const listStudents = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, req, await classesService.listClassStudents(req.user!, req.params.id));
 });

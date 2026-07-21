@@ -133,3 +133,146 @@ Returns assignment completion metrics and a full class roster with per-student s
 | `401` | `UNAUTHORIZED` | Missing or invalid access token |
 | `403` | `FORBIDDEN` | Authenticated user is not a lecturer |
 | `404` | `NOT_FOUND` | Assignment not found or not owned by the lecturer |
+
+---
+
+## Classes
+
+Base path: `/classes`
+
+All routes require authentication.
+
+| Method | Path | Description | Auth |
+| --- | --- | --- | --- |
+| GET | `/assigned` | List assigned classes | Lecturer |
+| GET | `/enrolled` | List enrolled classes | Student |
+| GET | `/` | List all classes (paginated) | Admin |
+| POST | `/` | Create a class | Admin |
+| GET | `/:id` | Get class detail | Admin, assigned Lecturer, or enrolled Student |
+| PATCH | `/:id` | Update a class | Admin |
+| DELETE | `/:id` | Soft-delete a class | Admin |
+| GET | `/:id/lecturers` | List assigned lecturers | Admin, assigned Lecturer, or enrolled Student |
+| POST | `/:id/lecturers` | Assign a lecturer | Admin |
+| GET | `/:id/students` | List enrolled students | Admin, assigned Lecturer, or enrolled Student |
+| POST | `/:id/students` | Enroll a student | Admin |
+
+### `GET /classes/:id`
+
+Returns class detail for admins, assigned lecturers, and enrolled students.
+
+**Auth:** Bearer token, role `ADMIN`, `LECTURER`, or `STUDENT`
+
+**Authorization:**
+
+| Role | Access |
+| --- | --- |
+| `ADMIN` | Any non-deleted class |
+| `LECTURER` | Class where the user is assigned via `ClassLecturer` |
+| `STUDENT` | Class where the user is enrolled via `ClassStudent` |
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "name": "CS101 — Intro to Programming",
+    "code": "CS101",
+    "description": "Optional description",
+    "isActive": true,
+    "createdAt": "2026-01-15T10:00:00.000Z",
+    "updatedAt": "2026-03-01T12:00:00.000Z"
+  }
+}
+```
+
+**Errors**
+
+| Status | Code | When |
+| --- | --- | --- |
+| `403` | `CLASS_ACCESS_DENIED` | User is not assigned/enrolled in the class |
+| `404` | `NOT_FOUND` | Class not found |
+
+### `GET /classes/:id/lecturers`
+
+Returns the lecturer roster for a class.
+
+**Auth:** Bearer token, role `ADMIN`, `LECTURER`, or `STUDENT` with class access (same rules as `GET /classes/:id`)
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "class-lecturer-uuid",
+      "userId": "lecturer-uuid",
+      "firstName": "Jane",
+      "lastName": "Doe",
+      "email": "jane@college.edu",
+      "isActive": true,
+      "assignedAt": "2026-01-20T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+- `id` is the `ClassLecturer` row id (not the user id).
+- Returns `200` with `data: []` when no lecturers are assigned.
+
+### `GET /classes/:id/students`
+
+Returns the student roster for a class.
+
+**Auth:** Bearer token, role `ADMIN`, `LECTURER`, or `STUDENT` with class access (same rules as `GET /classes/:id`)
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "class-student-uuid",
+      "userId": "student-uuid",
+      "firstName": "John",
+      "lastName": "Smith",
+      "email": "john@college.edu",
+      "isActive": true,
+      "enrolledAt": "2026-01-22T11:00:00.000Z"
+    }
+  ]
+}
+```
+
+- `id` is the `ClassStudent` row id (not the user id).
+- Returns `200` with `data: []` when no students are enrolled.
+
+### `GET /classes/enrolled`
+
+Returns active, non-deleted classes the authenticated student is enrolled in.
+
+**Auth:** Bearer token, role `STUDENT`
+
+**Response `200`**
+
+Same shape as `GET /classes/assigned` (lecturer):
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "name": "CS101",
+      "code": "CS101",
+      "description": null,
+      "isActive": true,
+      "createdAt": "2026-01-15T10:00:00.000Z",
+      "updatedAt": "2026-03-01T12:00:00.000Z"
+    }
+  ]
+}
+```

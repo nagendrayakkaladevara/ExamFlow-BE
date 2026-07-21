@@ -1,8 +1,11 @@
+import type { UserRole } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { ApiError } from '../../utils/ApiError';
 import { encodeCursor, parseCursor } from '../../utils/pagination';
 import type { createClassSchema, listClassesQuerySchema, updateClassSchema } from './classes.schema';
 import type { z } from 'zod';
+
+type ClassAccessUser = { id: string; role: UserRole };
 
 function toClassDto(row: {
   id: string;
@@ -62,10 +65,95 @@ export async function listLecturerClasses(lecturerId: string) {
   return rows.map((row) => toClassDto(row.class));
 }
 
-export async function getClass(id: string) {
-  const row = await prisma.class.findFirst({ where: { id, deletedAt: null } });
+export async function listStudentClasses(studentId: string) {
+  const rows = await prisma.classStudent.findMany({
+    where: { studentId, class: { deletedAt: null, isActive: true } },
+    include: { class: true },
+    orderBy: { class: { name: 'asc' } },
+  });
+  return rows.map((row) => toClassDto(row.class));
+}
+
+async function requireClassAccess(user: ClassAccessUser, classId: string) {
+  const row = await prisma.class.findFirst({ where: { id: classId, deletedAt: null } });
   if (!row) throw ApiError.notFound('Class not found');
+
+  if (user.role === 'ADMIN') return row;
+
+  if (user.role === 'LECTURER') {
+    const assignment = await prisma.classLecturer.findUnique({
+      where: { classId_lecturerId: { classId, lecturerId: user.id } },
+    });
+    if (!assignment) {
+      throw ApiError.forbidden('Not assigned to this class', 'CLASS_ACCESS_DENIED');
+    }
+    return row;
+  }
+
+  if (user.role === 'STUDENT') {
+    const enrollment = await prisma.classStudent.findUnique({
+      where: { classId_studentId: { classId, studentId: user.id } },
+    });
+    if (!enrollment) {
+      throw ApiError.forbidden('Not enrolled in this class', 'CLASS_ACCESS_DENIED');
+    }
+    return row;
+  }
+
+  throw ApiError.forbidden('Not authorized to access this class', 'CLASS_ACCESS_DENIED');
+}
+
+export async function getClass(user: ClassAccessUser, id: string) {
+  const row = await requireClassAccess(user, id);
   return toClassDto(row);
+}
+
+export async function listClassLecturers(user: ClassAccessUser, classId: string) {
+  await requireClassAccess(user, classId);
+
+  const rows = await prisma.classLecturer.findMany({
+    where: { classId },
+    include: {
+      lecturer: {
+        select: { firstName: true, lastName: true, email: true, isActive: true },
+      },
+    },
+    orderBy: [{ assignedAt: 'asc' }],
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.lecturerId,
+    firstName: row.lecturer.firstName,
+    lastName: row.lecturer.lastName,
+    email: row.lecturer.email,
+    isActive: row.lecturer.isActive,
+    assignedAt: row.assignedAt,
+  }));
+}
+
+export async function listClassStudents(user: ClassAccessUser, classId: string) {
+  await requireClassAccess(user, classId);
+
+  const rows = await prisma.classStudent.findMany({
+    where: { classId },
+    include: {
+      student: {
+        select: { firstName: true, lastName: true, email: true, isActive: true },
+      },
+    },
+    orderBy: [{ enrolledAt: 'asc' }],
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.studentId,
+    firstName: row.student.firstName,
+    lastName: row.student.lastName,
+    email: row.student.email,
+    isActive: row.student.isActive,
+    enrolledAt: row.enrolledAt,
+  }));
 }
 
 export async function createClass(adminId: string, input: z.infer<typeof createClassSchema>) {
