@@ -64,25 +64,134 @@ export async function getLecturerClassAnalytics(lecturerId: string, classId: str
   };
 }
 
+type AssignmentRankingStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'SUBMITTED' | 'AUTO_SUBMITTED';
+
+type AssignmentRankingRow = {
+  rank: number | null;
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  status: AssignmentRankingStatus;
+  score: number | null;
+  maxScore: number | null;
+  submittedAt: Date | null;
+};
+
+function compareSubmittedRankings(a: AssignmentRankingRow, b: AssignmentRankingRow) {
+  const scoreA = a.score ?? -Infinity;
+  const scoreB = b.score ?? -Infinity;
+  if (scoreB !== scoreA) return scoreB - scoreA;
+
+  const timeA = a.submittedAt?.getTime() ?? Infinity;
+  const timeB = b.submittedAt?.getTime() ?? Infinity;
+  return timeA - timeB;
+}
+
+function comparePendingRankings(a: AssignmentRankingRow, b: AssignmentRankingRow) {
+  if (a.status !== b.status) {
+    if (a.status === 'IN_PROGRESS') return -1;
+    if (b.status === 'IN_PROGRESS') return 1;
+  }
+
+  const lastNameCmp = a.lastName.localeCompare(b.lastName);
+  if (lastNameCmp !== 0) return lastNameCmp;
+  return a.firstName.localeCompare(b.firstName);
+}
+
 export async function getLecturerAssignmentAnalytics(
   lecturerId: string,
   assignmentId: string,
 ) {
   const assignment = await prisma.assignment.findFirst({
     where: { id: assignmentId, lecturerId, deletedAt: null },
-    include: { class: { include: { students: true } } },
+    select: { id: true, title: true, classId: true },
   });
   if (!assignment) throw ApiError.notFound('Assignment not found');
 
   await finalizeExpiredForAssignment(assignmentId);
 
-  const submissions = await prisma.submission.findMany({
-    where: { assignmentId },
-    orderBy: [{ score: 'desc' }, { submittedAt: 'asc' }],
+  const [enrolledStudents, submissions, maxScoreAgg] = await Promise.all([
+    prisma.classStudent.findMany({
+      where: {
+        classId: assignment.classId,
+        student: { role: 'STUDENT', isActive: true, deletedAt: null },
+      },
+      include: {
+        student: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+      orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
+    }),
+    prisma.submission.findMany({ where: { assignmentId } }),
+    prisma.assignmentQuestion.aggregate({
+      where: { assignmentId },
+      _sum: { marks: true },
+    }),
+  ]);
+
+  const assignmentMaxScore = decimalToNumber(maxScoreAgg._sum.marks);
+  const submissionsByStudentId = new Map(submissions.map((s) => [s.studentId, s]));
+
+  const rows: AssignmentRankingRow[] = enrolledStudents.map(({ student }) => {
+    const submission = submissionsByStudentId.get(student.id);
+
+    if (!submission) {
+      return {
+        rank: null,
+        studentId: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        email: student.email,
+        status: 'NOT_STARTED',
+        score: null,
+        maxScore: assignmentMaxScore,
+        submittedAt: null,
+      };
+    }
+
+    if (submission.status === 'IN_PROGRESS') {
+      return {
+        rank: null,
+        studentId: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        email: student.email,
+        status: 'IN_PROGRESS',
+        score: null,
+        maxScore: decimalToNumber(submission.maxScore) ?? assignmentMaxScore,
+        submittedAt: null,
+      };
+    }
+
+    return {
+      rank: null,
+      studentId: student.id,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      email: student.email,
+      status: submission.status,
+      score: decimalToNumber(submission.score),
+      maxScore: decimalToNumber(submission.maxScore) ?? assignmentMaxScore,
+      submittedAt: submission.submittedAt,
+    };
   });
 
-  const enrolled = assignment.class.students.length;
-  const submitted = submissions.filter((s) => s.status !== 'IN_PROGRESS').length;
+  const submittedRows = rows
+    .filter((row) => row.status === 'SUBMITTED' || row.status === 'AUTO_SUBMITTED')
+    .sort(compareSubmittedRankings);
+
+  submittedRows.forEach((row, index) => {
+    row.rank = index + 1;
+  });
+
+  const pendingRows = rows
+    .filter((row) => row.status === 'NOT_STARTED' || row.status === 'IN_PROGRESS')
+    .sort(comparePendingRankings);
+
+  const enrolled = enrolledStudents.length;
+  const submitted = submittedRows.length;
 
   return {
     assignmentId,
@@ -90,15 +199,7 @@ export async function getLecturerAssignmentAnalytics(
     enrolled,
     submitted,
     completionRate: enrolled > 0 ? submitted / enrolled : 0,
-    rankings: submissions
-      .filter((s) => s.status !== 'IN_PROGRESS')
-      .map((s, index) => ({
-        rank: index + 1,
-        studentId: s.studentId,
-        score: decimalToNumber(s.score),
-        maxScore: decimalToNumber(s.maxScore),
-        submittedAt: s.submittedAt,
-      })),
+    rankings: [...submittedRows, ...pendingRows],
   };
 }
 
