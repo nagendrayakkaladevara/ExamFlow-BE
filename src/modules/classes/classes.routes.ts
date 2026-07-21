@@ -21,26 +21,52 @@ classesRouter.get(
   classesController.listAssigned,
 );
 
-classesRouter.use(authorize('ADMIN'));
+classesRouter.get(
+  '/enrolled',
+  authorize('STUDENT'),
+  classesController.listEnrolled,
+);
 
-classesRouter.get('/', validate(listClassesQuerySchema, 'query'), classesController.list);
-classesRouter.post('/', validate(createClassSchema), classesController.create);
-classesRouter.get('/:id', validate(classIdParamSchema, 'params'), classesController.get);
+classesRouter.get('/', authorize('ADMIN'), validate(listClassesQuerySchema, 'query'), classesController.list);
+classesRouter.post('/', authorize('ADMIN'), validate(createClassSchema), classesController.create);
+
+classesRouter.get(
+  '/:id',
+  authorize('ADMIN', 'LECTURER', 'STUDENT'),
+  validate(classIdParamSchema, 'params'),
+  classesController.get,
+);
+classesRouter.get(
+  '/:id/lecturers',
+  authorize('ADMIN', 'LECTURER', 'STUDENT'),
+  validate(classIdParamSchema, 'params'),
+  classesController.listLecturers,
+);
+classesRouter.get(
+  '/:id/students',
+  authorize('ADMIN', 'LECTURER', 'STUDENT'),
+  validate(classIdParamSchema, 'params'),
+  classesController.listStudents,
+);
+
 classesRouter.patch(
   '/:id',
+  authorize('ADMIN'),
   validate(classIdParamSchema, 'params'),
   validate(updateClassSchema),
   classesController.update,
 );
-classesRouter.delete('/:id', validate(classIdParamSchema, 'params'), classesController.remove);
+classesRouter.delete('/:id', authorize('ADMIN'), validate(classIdParamSchema, 'params'), classesController.remove);
 classesRouter.post(
   '/:id/lecturers',
+  authorize('ADMIN'),
   validate(classIdParamSchema, 'params'),
   validate(assignMemberSchema),
   classesController.assignLecturer,
 );
 classesRouter.post(
   '/:id/students',
+  authorize('ADMIN'),
   validate(classIdParamSchema, 'params'),
   validate(assignMemberSchema),
   classesController.assignStudent,
