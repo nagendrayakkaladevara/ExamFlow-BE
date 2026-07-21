@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/** Treat empty/null as omitted — clients often send these when the field is hidden. */
+const optionalResultDeclareAt = z.preprocess(
+  (val) => (val === '' || val === undefined || val === null ? undefined : val),
+  z.string().datetime().optional(),
+);
+
 const assignmentBaseSchema = z
   .object({
     classId: z.string().uuid(),
@@ -9,7 +15,7 @@ const assignmentBaseSchema = z
     endAt: z.string().datetime(),
     durationMinutes: z.number().int().positive(),
     resultPolicy: z.enum(['IMMEDIATE', 'AFTER_COMPLETION', 'SCHEDULED']),
-    resultDeclareAt: z.string().datetime().optional(),
+    resultDeclareAt: optionalResultDeclareAt,
     isPublished: z.boolean().optional(),
   })
   .strict();
