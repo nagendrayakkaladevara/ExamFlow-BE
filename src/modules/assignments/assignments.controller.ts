@@ -35,6 +35,10 @@ export const importQuestions = asyncHandler(async (req: Request, res: Response) 
   );
 });
 
+export const attempt = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, req, await assignmentsService.getAttempt(req.user!.id, req.params.id));
+});
+
 export const start = asyncHandler(async (req: Request, res: Response) => {
   const submission = await assignmentsService.startAttempt(req.user!.id, req.params.id);
   ok(res, req, submission, 201);

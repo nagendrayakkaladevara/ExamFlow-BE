@@ -46,6 +46,16 @@ export const assignStudent = asyncHandler(async (req: Request, res: Response) =>
   ok(res, req, { enrolled: true });
 });
 
+export const unassignLecturer = asyncHandler(async (req: Request, res: Response) => {
+  await classesService.unassignLecturer(req.user!.id, req.params.id, req.params.userId);
+  ok(res, req, { unassigned: true });
+});
+
+export const unassignStudent = asyncHandler(async (req: Request, res: Response) => {
+  await classesService.unassignStudent(req.user!.id, req.params.id, req.params.userId);
+  ok(res, req, { unassigned: true });
+});
+
 export const listLecturers = asyncHandler(async (req: Request, res: Response) => {
   ok(res, req, await classesService.listClassLecturers(req.user!, req.params.id));
 });

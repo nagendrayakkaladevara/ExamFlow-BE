@@ -270,6 +270,75 @@ export async function finalizeExpiredForAssignment(assignmentId: string) {
   return { processed: expired.length };
 }
 
+function mapSubmission(row: {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  status: string;
+  startedAt: Date;
+  endsAt: Date;
+  submittedAt: Date | null;
+  score: Prisma.Decimal | null;
+  maxScore: Prisma.Decimal | null;
+  correctCount: number | null;
+  incorrectCount: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: row.id,
+    assignmentId: row.assignmentId,
+    studentId: row.studentId,
+    status: row.status,
+    startedAt: row.startedAt,
+    endsAt: row.endsAt,
+    submittedAt: row.submittedAt,
+    score: decimalToNumber(row.score),
+    maxScore: decimalToNumber(row.maxScore),
+    correctCount: row.correctCount,
+    incorrectCount: row.incorrectCount,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export async function getAttempt(studentId: string, assignmentId: string) {
+  const assignment = await prisma.assignment.findFirst({
+    where: { id: assignmentId, deletedAt: null, isPublished: true },
+  });
+  if (!assignment) throw ApiError.notFound('Assignment not found');
+
+  await assertStudentEnrolled(studentId, assignment.classId);
+
+  let submission = await prisma.submission.findUnique({
+    where: { assignmentId_studentId: { assignmentId, studentId } },
+    include: { answers: true, assignment: true },
+  });
+  if (!submission) throw ApiError.notFound('No attempt found', 'NO_ATTEMPT');
+
+  if (submission.status === 'IN_PROGRESS') {
+    await ensureSubmissionFinalizedIfExpired(submission, submission.assignment);
+    submission = await prisma.submission.findUnique({
+      where: { assignmentId_studentId: { assignmentId, studentId } },
+      include: { answers: true, assignment: true },
+    });
+    if (!submission) throw ApiError.notFound('No attempt found', 'NO_ATTEMPT');
+  }
+
+  const answers =
+    submission.status === 'IN_PROGRESS'
+      ? submission.answers.map((a) => ({
+          assignmentQuestionId: a.assignmentQuestionId,
+          answer: a.answer,
+        }))
+      : [];
+
+  return {
+    submission: mapSubmission(submission),
+    answers,
+  };
+}
+
 export async function startAttempt(studentId: string, assignmentId: string) {
   const assignment = await prisma.assignment.findFirst({
     where: { id: assignmentId, deletedAt: null, isPublished: true },
@@ -548,6 +617,10 @@ export async function getResult(studentId: string, assignmentId: string) {
       marksAwarded: decimalToNumber(a.marksAwarded),
       explanation: a.assignmentQuestion.question.explanation,
       correctText: a.assignmentQuestion.question.correctText,
+      title: a.assignmentQuestion.question.title,
+      description: a.assignmentQuestion.question.description,
+      type: a.assignmentQuestion.question.type,
+      imageUrl: a.assignmentQuestion.question.imageUrl,
       options: a.assignmentQuestion.question.options.map((o) => ({
         id: o.id,
         optionText: o.optionText,

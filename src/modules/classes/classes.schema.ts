@@ -28,6 +28,13 @@ export const updateClassSchema = z
 
 export const classIdParamSchema = z.object({ id: z.string().uuid() }).strict();
 
+export const classMemberParamSchema = z
+  .object({
+    id: z.string().uuid(),
+    userId: z.string().uuid(),
+  })
+  .strict();
+
 export const assignMemberSchema = z
   .object({
     userId: z.string().uuid(),

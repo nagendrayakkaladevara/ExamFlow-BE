@@ -24,6 +24,12 @@ assignmentsRouter.get(
   assignmentsController.get,
 );
 assignmentsRouter.get(
+  '/:id/attempt',
+  authorize('STUDENT'),
+  validate(assignmentIdParamSchema, 'params'),
+  assignmentsController.attempt,
+);
+assignmentsRouter.get(
   '/:id/result',
   authorize('STUDENT'),
   validate(assignmentIdParamSchema, 'params'),

@@ -6,6 +6,7 @@ import * as classesController from './classes.controller';
 import {
   assignMemberSchema,
   classIdParamSchema,
+  classMemberParamSchema,
   createClassSchema,
   listClassesQuerySchema,
   updateClassSchema,
@@ -70,4 +71,16 @@ classesRouter.post(
   validate(classIdParamSchema, 'params'),
   validate(assignMemberSchema),
   classesController.assignStudent,
+);
+classesRouter.delete(
+  '/:id/lecturers/:userId',
+  authorize('ADMIN'),
+  validate(classMemberParamSchema, 'params'),
+  classesController.unassignLecturer,
+);
+classesRouter.delete(
+  '/:id/students/:userId',
+  authorize('ADMIN'),
+  validate(classMemberParamSchema, 'params'),
+  classesController.unassignStudent,
 );

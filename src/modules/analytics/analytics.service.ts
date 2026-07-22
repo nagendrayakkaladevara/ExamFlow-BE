@@ -4,6 +4,43 @@ import { decimalToNumber } from '../../utils/pagination';
 import { finalizeExpiredForAssignment } from '../assignments/assignments.service';
 import { assertLecturerAssigned } from '../classes/classes.service';
 
+const PASS_THRESHOLD = 0.4;
+
+function toPercentage(score: number | null, maxScore: number | null): number | null {
+  if (score == null || maxScore == null || maxScore <= 0) return null;
+  return Math.round((score / maxScore) * 1000) / 10;
+}
+
+function summarizeSubmissionScores(
+  submissions: { score: unknown; maxScore: unknown }[],
+) {
+  const percentages: number[] = [];
+  let passed = 0;
+  let failed = 0;
+
+  for (const submission of submissions) {
+    const score = decimalToNumber(submission.score as never);
+    const maxScore = decimalToNumber(submission.maxScore as never);
+    const percentage = toPercentage(score, maxScore);
+    if (percentage == null) continue;
+
+    percentages.push(percentage);
+    if (percentage / 100 >= PASS_THRESHOLD) passed += 1;
+    else failed += 1;
+  }
+
+  return {
+    passed,
+    failed,
+    highestScore: percentages.length > 0 ? Math.max(...percentages) : null,
+    lowestScore: percentages.length > 0 ? Math.min(...percentages) : null,
+    averageScore:
+      percentages.length > 0
+        ? Math.round((percentages.reduce((a, b) => a + b, 0) / percentages.length) * 10) / 10
+        : null,
+  };
+}
+
 export async function getStudentAnalytics(studentId: string) {
   const submissions = await prisma.submission.findMany({
     where: {
@@ -29,9 +66,20 @@ export async function getStudentAnalytics(studentId: string) {
       title: s.assignment.title,
       score: decimalToNumber(s.score),
       maxScore: decimalToNumber(s.maxScore),
+      correctCount: s.correctCount,
+      incorrectCount: s.incorrectCount,
+      percentage: toPercentage(decimalToNumber(s.score), decimalToNumber(s.maxScore)),
       submittedAt: s.submittedAt,
       status: s.status,
     })),
+    trend: [...submissions]
+      .filter((s) => s.submittedAt)
+      .sort((a, b) => a.submittedAt!.getTime() - b.submittedAt!.getTime())
+      .map((s) => ({
+        submittedAt: s.submittedAt!,
+        percentage: toPercentage(decimalToNumber(s.score), decimalToNumber(s.maxScore)),
+      }))
+      .filter((point) => point.percentage != null),
   };
 }
 
@@ -55,12 +103,19 @@ export async function getLecturerClassAnalytics(lecturerId: string, classId: str
       ? submissions.length / (studentCount * assignmentCount)
       : 0;
 
+  const scoreSummary = summarizeSubmissionScores(submissions);
+
   return {
     classId,
     studentCount,
     assignmentCount,
     completedSubmissions: submissions.length,
     completionRate: Math.round(completionRate * 100) / 100,
+    passed: scoreSummary.passed,
+    failed: scoreSummary.failed,
+    highestScore: scoreSummary.highestScore,
+    lowestScore: scoreSummary.lowestScore,
+    averageScore: scoreSummary.averageScore,
   };
 }
 
@@ -204,7 +259,8 @@ export async function getLecturerAssignmentAnalytics(
 }
 
 export async function getAdminOverview() {
-  const [users, classes, assignments, submissions] = await Promise.all([
+  const [users, classes, assignments, submissions, enrollmentsByClass, assignmentRows] =
+    await Promise.all([
     prisma.user.groupBy({
       by: ['role'],
       where: { deletedAt: null, isActive: true },
@@ -213,7 +269,35 @@ export async function getAdminOverview() {
     prisma.class.count({ where: { deletedAt: null, isActive: true } }),
     prisma.assignment.count({ where: { deletedAt: null } }),
     prisma.submission.count({ where: { status: { in: ['SUBMITTED', 'AUTO_SUBMITTED'] } } }),
+    prisma.classStudent.groupBy({ by: ['classId'], _count: true }),
+    prisma.assignment.findMany({
+      where: { deletedAt: null },
+      select: {
+        classId: true,
+        _count: {
+          select: {
+            submissions: {
+              where: { status: { in: ['SUBMITTED', 'AUTO_SUBMITTED'] } },
+            },
+          },
+        },
+      },
+    }),
   ]);
+
+  const enrollmentMap = new Map(
+    enrollmentsByClass.map((row) => [row.classId, row._count]),
+  );
+
+  let totalPossible = 0;
+  let totalSubmitted = 0;
+  for (const assignment of assignmentRows) {
+    totalPossible += enrollmentMap.get(assignment.classId) ?? 0;
+    totalSubmitted += assignment._count.submissions;
+  }
+
+  const averageCompletionRate =
+    totalPossible > 0 ? Math.round((totalSubmitted / totalPossible) * 1000) / 1000 : 0;
 
   return {
     usersByRole: users.reduce(
@@ -226,5 +310,6 @@ export async function getAdminOverview() {
     activeClasses: classes,
     totalAssignments: assignments,
     completedSubmissions: submissions,
+    averageCompletionRate,
   };
 }

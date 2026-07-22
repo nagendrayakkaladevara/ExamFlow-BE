@@ -250,6 +250,34 @@ export async function assignStudent(adminId: string, classId: string, userId: st
   }
 }
 
+export async function unassignLecturer(_adminId: string, classId: string, userId: string) {
+  const cls = await prisma.class.findFirst({ where: { id: classId, deletedAt: null } });
+  if (!cls) throw ApiError.notFound('Class not found');
+
+  const row = await prisma.classLecturer.findUnique({
+    where: { classId_lecturerId: { classId, lecturerId: userId } },
+  });
+  if (!row) throw ApiError.notFound('Lecturer not assigned to this class');
+
+  await prisma.classLecturer.delete({
+    where: { classId_lecturerId: { classId, lecturerId: userId } },
+  });
+}
+
+export async function unassignStudent(_adminId: string, classId: string, userId: string) {
+  const cls = await prisma.class.findFirst({ where: { id: classId, deletedAt: null } });
+  if (!cls) throw ApiError.notFound('Class not found');
+
+  const row = await prisma.classStudent.findUnique({
+    where: { classId_studentId: { classId, studentId: userId } },
+  });
+  if (!row) throw ApiError.notFound('Student not enrolled in this class');
+
+  await prisma.classStudent.delete({
+    where: { classId_studentId: { classId, studentId: userId } },
+  });
+}
+
 export async function assertLecturerAssigned(lecturerId: string, classId: string) {
   const row = await prisma.classLecturer.findUnique({
     where: { classId_lecturerId: { classId, lecturerId } },
