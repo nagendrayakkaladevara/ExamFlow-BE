@@ -76,6 +76,7 @@ function mapQuestion(row: {
     difficulty: row.difficulty,
     subject: row.subject,
     topic: row.topic,
+    correctText: row.correctText,
     imageUrl: row.imageUrl,
     imageBlobKey: row.imageBlobKey,
     createdAt: row.createdAt,
