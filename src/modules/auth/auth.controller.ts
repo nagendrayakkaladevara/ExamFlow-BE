@@ -61,6 +61,11 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+export const me = asyncHandler(async (req: Request, res: Response) => {
+  const user = await authService.getMe(req.user!.id);
+  success(req, res, user);
+});
+
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] as string | undefined;
   await authService.logout(refreshToken);

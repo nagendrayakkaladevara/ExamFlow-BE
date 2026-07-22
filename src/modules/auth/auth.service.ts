@@ -266,6 +266,23 @@ export async function refresh(refreshToken: string): Promise<RefreshResult> {
   };
 }
 
+export async function getMe(userId: string): Promise<PublicUser> {
+  const user = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      deletedAt: null,
+      isActive: true,
+    },
+    select: userPublicSelect,
+  });
+
+  if (!user) {
+    throw ApiError.unauthorized('User not found or inactive');
+  }
+
+  return user;
+}
+
 export async function logout(refreshToken?: string): Promise<void> {
   if (!refreshToken) {
     return;
