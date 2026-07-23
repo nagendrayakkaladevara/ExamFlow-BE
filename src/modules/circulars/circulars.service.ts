@@ -20,6 +20,15 @@ function validateAudiences(
   }
 }
 
+function formatUserName(user: { firstName: string; lastName: string }) {
+  return `${user.firstName} ${user.lastName}`.trim();
+}
+
+const circularInclude = {
+  audiences: true,
+  updatedBy: { select: { id: true, firstName: true, lastName: true } },
+} as const;
+
 function mapCircular(row: {
   id: string;
   title: string;
@@ -28,6 +37,9 @@ function mapCircular(row: {
   publishAt: Date;
   isPublished: boolean;
   createdAt: Date;
+  updatedAt: Date;
+  updatedById: string | null;
+  updatedBy?: { id: string; firstName: string; lastName: string } | null;
   audiences?: { targetType: string; targetId: string | null }[];
 }) {
   return {
@@ -38,6 +50,10 @@ function mapCircular(row: {
     publishAt: row.publishAt,
     isPublished: row.isPublished,
     createdAt: row.createdAt,
+    lastEditedBy: row.updatedBy
+      ? { id: row.updatedBy.id, name: formatUserName(row.updatedBy) }
+      : null,
+    lastEditedAt: row.updatedById ? row.updatedAt : null,
     audiences: row.audiences?.map((a) => ({
       targetType: a.targetType,
       targetId: a.targetId,
@@ -74,7 +90,7 @@ export async function listCirculars(
             }
           : {}),
       },
-      include: { audiences: true },
+      include: circularInclude,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
     });
@@ -95,7 +111,7 @@ export async function listCirculars(
       isPublished: true,
       publishAt: { lte: now },
     },
-    include: { audiences: true },
+    include: circularInclude,
     orderBy: { publishAt: 'desc' },
   });
 
@@ -117,7 +133,7 @@ export async function listCirculars(
 export async function getCircular(id: string, user: { id: string; role: UserRole }) {
   const row = await prisma.circular.findFirst({
     where: { id, deletedAt: null },
-    include: { audiences: true },
+    include: circularInclude,
   });
   if (!row) throw ApiError.notFound('Circular not found');
 
@@ -163,7 +179,7 @@ export async function createCircular(
       isPublished: publishAt <= new Date(),
       audiences: { create: input.audiences.map((a) => ({ targetType: a.targetType, targetId: a.targetId })) },
     },
-    include: { audiences: true },
+    include: circularInclude,
   });
   return mapCircular(row);
 }
