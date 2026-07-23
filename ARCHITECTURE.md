@@ -472,9 +472,18 @@ Assignments
 
 Analytics
   GET /analytics/student/me
+  GET /analytics/student/me/by-tag
+  GET /analytics/lecturer/summary
   GET /analytics/lecturer/classes/:classId
   GET /analytics/lecturer/assignments/:assignmentId
+  GET /analytics/lecturer/assignments/:assignmentId/questions
+  GET /analytics/lecturer/assignments/:assignmentId/export
   GET /analytics/admin/overview
+  GET /analytics/admin/classes/:classId
+  GET /analytics/admin/activity
+  GET /analytics/admin/trends
+  GET /analytics/admin/alerts
+  GET /analytics/admin/reports/:reportType/export
 
 Circulars / Polls
   GET|POST           /circulars | /polls
